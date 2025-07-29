@@ -107,7 +107,7 @@ def evaluate(policy_net, env_name='CartPole-v1', filename='task1_eval.gif'):
         images.append(env.render())
 
     imageio.mimsave(f"../vid_task1/{filename}", images, fps=30)
-    print(f"🎥 Saved {filename} | Total Reward: {total_reward}")
+    print(f"Saved {filename} | Total Reward: {total_reward}")
     env.close()
 
 # ==== 訓練函數 ====
@@ -155,16 +155,23 @@ def train():
             state = next_state
             total_reward += reward
 
+            # 如果緩衝區中的經驗足夠，就開始訓練
             if len(memory) > BATCH_SIZE:
+                # 從緩衝區中取樣一批資料
                 states, actions, rewards_b, next_states, dones = memory.sample(BATCH_SIZE)
+                # 計算當前 Q-value
                 q_values = policy_net(states).gather(1, actions)
+                # 計算下一個狀態的 Q-value (從 Target Network 中取最大值)
                 next_q_values = target_net(next_states).max(1)[0].unsqueeze(1)
+                # 計算期望的 Q-value (TD Target)
                 expected_q = rewards_b + GAMMA * next_q_values * (1 - dones)
+                # 計算損失 (Loss)，使用均方誤差 (MSE)
                 loss = nn.MSELoss()(q_values, expected_q)
 
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+                # 模型優化步驟
+                optimizer.zero_grad() # 清除舊的梯度
+                loss.backward()       # 反向傳播計算梯度
+                optimizer.step()      # 更新網路權重
 
                 losses.append(loss.item())
 
