@@ -22,9 +22,9 @@ EPSILON_END = 0.01
 EPSILON_DECAY = 1_000_000
 EPISODES = 3000
 MULTI_STEP = 3
-ALPHA = 0.6
-BETA_START = 0.4
-BETA_FRAMES = 1_000_000
+ALPHA = 0.6                     # PER 中，決定優先級 p 的重要性 (p^alpha)
+BETA_START = 0.4                # PER 中，重要性採樣 (Importance Sampling) 的初始 beta 值
+BETA_FRAMES = 1_000_000         # Beta 從初始值增長到 1.0 所需的步數
 
 # ==== 自動建立資料夾 ====
 os.makedirs("../history_task32", exist_ok=True)
@@ -65,32 +65,43 @@ class CNN(nn.Module):
 # ==== Multi-Step + Prioritized Experience Replay Buffer ====
 Transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_state', 'done'))
 
+# 實現了 PER 和 Multi-Step Learning 的經驗回放緩衝區
 class PrioritizedReplayBuffer:
     def __init__(self, capacity, alpha, n_step):
         self.capacity = capacity
         self.buffer = []
+        # 用一個 numpy array 來儲存每個經驗的優先級 (priority)
         self.priorities = np.zeros((capacity,), dtype=np.float32)
         self.pos = 0
         self.alpha = alpha
         self.n_step = n_step
+        # 暫存最近 n_step 步的經驗，用於計算 n-step return
         self.nstep_buffer = deque(maxlen=n_step)
 
     def push(self, state, action, reward, next_state, done):
+        # 將單步經驗存入 n-step 緩衝區
         transition = Transition(state, action, reward, next_state, done)
         self.nstep_buffer.append(transition)
 
+        # 如果 n-step 緩衝區還沒滿，就直接返回
         if len(self.nstep_buffer) < self.n_step:
             return
 
+        # 計算 n-step return
         reward, next_state, done = self._get_n_step_info()
+        # 取出 n-step 緩衝區中最早的 state 和 action
         state, action = self.nstep_buffer[0].state, self.nstep_buffer[0].action
 
+        # 設定新經驗的初始優先級為當前最高優先級，確保它有機會被抽到
         max_prio = self.priorities.max() if self.buffer else 1.0
+        # 將 n-step 經驗存入主緩衝區
         if len(self.buffer) < self.capacity:
             self.buffer.append((state, action, reward, next_state, done))
         else:
             self.buffer[self.pos] = (state, action, reward, next_state, done)
+        # 更新對應位置的優先級
         self.priorities[self.pos] = max_prio
+        # 更新寫入位置
         self.pos = (self.pos + 1) % self.capacity
 
     def _get_n_step_info(self):
