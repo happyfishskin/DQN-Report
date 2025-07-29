@@ -34,8 +34,8 @@ os.makedirs("../vid_task32", exist_ok=True)
 
 
 device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
-print("✅ CUDA available:", torch.cuda.is_available())
-print("✅ Using device:", device)
+print("CUDA available:", torch.cuda.is_available())
+print("Using device:", device)
 
 # ==== 建立 Atari 環境 ====
 def make_env(env_name="ALE/Pong-v5", render_mode=None):
@@ -105,10 +105,15 @@ class PrioritizedReplayBuffer:
         self.pos = (self.pos + 1) % self.capacity
 
     def _get_n_step_info(self):
+        # 計算 n-step return 的核心邏輯
+        # 從 n-step 緩衝區的最後一筆經驗開始回溯
         reward, next_state, done = self.nstep_buffer[-1].reward, self.nstep_buffer[-1].next_state, self.nstep_buffer[-1].done
+        # 迴圈反向遍歷 n-step 緩衝區中的前 n-1 筆經驗
         for transition in reversed(list(self.nstep_buffer)[:-1]):
             r, n_s, d = transition.reward, transition.next_state, transition.done
+            # 累加折扣後的獎勵
             reward = r + GAMMA * reward * (1 - d)
+            # 如果中間的步驟就結束了，那麼最終的 next_state 和 done 就用那一筆的
             next_state, done = (n_s, d) if d else (next_state, done)
         return reward, next_state, done
 
@@ -116,6 +121,7 @@ class PrioritizedReplayBuffer:
         if len(self.buffer) == 0:
             return [], [], [], [], [], [], []
 
+        # 根據優先級計算抽樣概率
         prios = self.priorities[:len(self.buffer)]
         probs = prios ** self.alpha
         probs /= probs.sum()
